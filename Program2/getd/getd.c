@@ -36,76 +36,22 @@ void check_file_size(FILE **ptr, long *size) {
 	assert(fseek((*ptr), 0, SEEK_SET) != -1 && "fseek failed!");
 }
 
-void check_file_permissions(char *path, char *name) {
-	struct stat file_stat;
-
-	// If path does not exist
-	if (lstat(path, &file_stat) == -1) {
-		printf("check_file_permissions lstat failed, %s does not exist!\n", path);
-		exit(-1);
-	}
-
-	// Check permissions
-	if (!(file_stat.st_mode & S_IRUSR)) {
-      printf("%s does not have read permissions!\n", name);
-      exit(-1);
-  } else {
-  }
-}
-
-void check_if_user_owns_file(char *path, char *name, unsigned int name_len) {
-  struct passwd *pw;
-  struct stat file_stat;
-  char *file_owner;
-  int file_owner_len;
-  int length;
-
-	// fstat the file
-	assert(lstat(path, &file_stat) != -1 && "check_if_owner_owns_file: lstat in failed!");
-
-	// Get file's associated user
-	pw = getpwuid(file_stat.st_uid);
-	assert(pw != NULL && "passwd struct (st_uid) is NULL!");
-
-	// Store file's owner
-	file_owner_len = strlen(pw->pw_name);
-	assert(file_owner_len > 0 && "length is not > 0!");
-	file_owner = malloc(file_owner_len + 1);
-	assert(file_owner != NULL && "file_owner malloc is NULL!");
-	assert(strncpy(file_owner, pw->pw_name, file_owner_len) != NULL && "strncpy on file_owner is NULL!");
-
-
-	/* UNCOMMENT TO TEST VALUES *
-		printf("Owner  name: %s\n", suid_name);
-		printf("File  owner: %s\n", file_owner);
-	*/
-
-	// Find the lesser length
-	if (name_len < file_owner_len)
-		length = name_len;
-	else
-		length = file_owner_len;
-
-	// Compare owner's name with the file owner's name
-	if (strncmp(name, file_owner, length) != 0) {
-		printf("%s does not own %s\n", name, path);
-		exit(-1);
-	}
-}
-
 void check_received_vs_expected(int prev, int message_type) {
   // Expecting type 0
   if ((prev == -1 || prev == 2) && message_type != 0) {
     printf("Wrong Message Type: Expected 0, Recieved %d\n", message_type);
     exit(-1);
+
     // Expecting 3
   } else if (prev == 0 && message_type != 3) {
     printf("Wrong Message Type: Expected 3, Recieved %d\n", message_type);
     exit(-1);
+
     // Expecting 6
   } else if (prev == 3 && message_type != 6) {
     printf("Wrong Message Type: Expected 6, Recieved %d\n", message_type);
     exit(-1);
+
     // Expecting 6 again
   } else if (prev == 6 && message_type != 6) {
     printf("Wrong Message Type: Expected 6, Recieved %d\n", message_type);
@@ -127,6 +73,10 @@ void read_file(FILE **ptr, char **str, long *size) {
   *
   */
 void handle_type0(MessageType0 *type0, char **name, unsigned int *name_len) {
+
+  // Variables
+  int buf_len;
+
   // Error Checking - Message Type
   if (type0->header.messageType != 0) {
     printf("handle_type0: Message Type is not 0\n");
@@ -141,11 +91,6 @@ void handle_type0(MessageType0 *type0, char **name, unsigned int *name_len) {
     exit(-1);
   }
 
-  // Print Info
-  printf("Received Message Type: %d\n", type0->header.messageType);
-  printf("Received Message Length: %d\n\n", type0->header.messageLength);
-
-
   // Get username length
   (*name_len) = type0->dnLength;
   printf("name_length = %d\n", (*name_len));
@@ -159,11 +104,33 @@ void handle_type0(MessageType0 *type0, char **name, unsigned int *name_len) {
     exit(-1);
   }
 
+  // Error Checking - Null character
+  buf_len = strnlen(type0->distinguishedName, DN_LENGTH + 1);
+  assert(buf_len > 0 && "Name length is 0!");
+  if (buf_len == (DN_LENGTH + 1)) {
+    printf("handle_type0: The name buffer is not NULL terminated!\n");
+    exit(-1);
+  }
+
+  // Error Checking - Username buffer length
+  if (buf_len != (*name_len)) {
+    printf("handle_type0: The name length is not equal to the specified length.\n");
+    printf("Specified length = %d\n", (*name_len));
+    printf("Name length = %d\n", buf_len);
+    exit(-1);
+  }
+
+
   // Get username + Error Checking
   (*name) = malloc((*name_len) + 1);
   assert((*name) != NULL && "handle_type0 name is NULL!");
-  assert(strncpy((*name), type0->distinguishedName, (*name_len)) != NULL && "handle_type0 strncpy is NULL!");
+  assert(strncpy((*name), type0->distinguishedName, (*name_len)) != NULL
+   && "handle_type0 strncpy is NULL!");
   (*name)[(*name_len)] = '\0';
+
+  // Print Info
+  printf("Received Message Type: %d\n", type0->header.messageType);
+  printf("Received Message Length: %d\n\n", type0->header.messageLength);
 
 }
 
@@ -206,12 +173,45 @@ void handle_type1(int sock, MessageType1 *type1, char *session_id) {
   */
 void handle_type2(MessageType2 *type2) {
 
+  // Variables
+  int buf_len;
+
+  // Error Checking - Message Type
+  if (type2->header.messageType != 2) {
+    printf("handle_type2: Message Type is not 2.\n");
+    printf("Message Type = %d\n", type2->header.messageType);
+  }
+
+  // Error Checking - Message Length vs Actual Size
+  if (type2->header.messageLength != sizeof(MessageType2)) {
+    printf("handle_type2: Incorrect MessageType2 length!\n");
+    printf("type2->messageLength = %d\n", type2->header.messageLength);
+    printf("MessageType2 Length = %ld\n", sizeof(MessageType2));
+    exit(-1);
+  }
+
   // Error Checking - Message length
   if (type2->msgLength > MAX_ERROR_MESSAGE) {
     printf("handle_type2: Error message too large!\n");
     exit(-1);
   } else if (type2->msgLength == 0) {
     printf("handle_type2: Error message is 0!\n");
+    exit(-1);
+  }
+
+  // Error Checking - Buffer Null terminated
+  buf_len = strnlen(type2->errorMessage, MAX_ERROR_MESSAGE + 1);
+  assert(buf_len > 0 && "handle_type2: Actual message size is 0");
+  if (buf_len == MAX_ERROR_MESSAGE + 1) {
+    printf("Message buffer does is not NULL terminated!\n");
+    exit(-1);
+  }
+
+  // Error Checking - Buffer length
+  if (buf_len != type2->msgLength) {
+    printf("handle_type0: The name length is not equal to the specified length.\n");
+    printf("Specified length = %d\n", type2->msgLength);
+    printf("Message length = %d\n", buf_len);
     exit(-1);
   }
 
@@ -233,7 +233,7 @@ void handle_type3(MessageType3 *type3, FILE **fp, char *session_id, char *name,
     struct stat lstat_info;
     struct stat fstat_info;
     int fd;
-    int path_length;
+    int buf_len;
 
     // Error Checking - Message Type
     if (type3->header.messageType != 3) {
@@ -249,6 +249,22 @@ void handle_type3(MessageType3 *type3, FILE **fp, char *session_id, char *name,
       exit(-1);
     }
 
+    // Error Checking - Session ID Null terminated
+    buf_len = strnlen(type3->sessionId, SID_LENGTH + 1);
+    assert(buf_len > 0 && "handle_type3: buffer size is 0");
+    if (buf_len == (SID_LENGTH + 1)) {
+      printf("Session ID buffer is not NULL terminated!\n");
+      exit(-1);
+    }
+
+    // Error Checking - Session ID length
+    if (buf_len != type3->sidLength) {
+      printf("handle_type3: sessionID length is not equal to specified length\n");
+      printf("Specified length = %d\n", type3->sidLength);
+      printf("Session ID length = %d\n", buf_len);
+      exit(-1);
+    }
+
     // Error Checking - Session ID
     if (strncmp(session_id, type3->sessionId, SID_LENGTH) != 0) {
       printf("handle_type3: Session ID does not match original.\n");
@@ -257,24 +273,22 @@ void handle_type3(MessageType3 *type3, FILE **fp, char *session_id, char *name,
       exit(-1);
     }
 
-    // Print info
-    printf("Received Message Type: %d\n", type3->header.messageType);
-    printf("Received Message Length: %d\n\n", type3->header.messageLength);
+    // Error Checking - Path Null terminated
+    buf_len = strnlen(type3->pathName, PATH_MAX + 1);
+    assert(buf_len > 0 && "handle_type3: path size is 0.");
 
-    // Error Checking - Path length vs Actual path length
-    path_length = strlen(type3->pathName);
-    assert(path_length > 0 && "handle_type3 type3->pathName is 0.");
-    if (path_length != type3->pathLength) {
-      printf("handle_type3: type3->pathLength and actual path length are different.\n");
-      printf("type3->pathLength = %d\n", type3->pathLength);
-      printf("Actual path length = %d \n", path_length);
+    if (buf_len == (PATH_MAX + 1)) {
+      printf("handle_type3: Path buffer is not NULL terminated!\n");
+      exit(-1);
     }
 
-    // Error Checking - Check for ownership
-    check_if_user_owns_file(type3->pathName, name, name_len);
-
-    // Error Checking - Check for read permission
-    check_file_permissions(type3->pathName, name);
+    // Error Checking - Path length
+    if (buf_len != type3->pathLength) {
+      printf("handle_type3: Path length is not the same as specified length!\n");
+      printf("Specified Length = %d\n", type3->pathLength);
+      printf("Path length = %d \n", buf_len);
+      exit(-1);
+    }
 
     // Error Checking - lstat for existence
     if (lstat(type3->pathName, &lstat_info) == -1) {
@@ -308,6 +322,9 @@ void handle_type3(MessageType3 *type3, FILE **fp, char *session_id, char *name,
       exit(-1);
     }
 
+    // Print info
+    printf("Received Message Type: %d\n", type3->header.messageType);
+    printf("Received Message Length: %d\n\n", type3->header.messageLength);
 }
 
 /**
@@ -318,7 +335,7 @@ void handle_type3(MessageType3 *type3, FILE **fp, char *session_id, char *name,
   */
 void handle_type4(int sock, MessageType4 *type4, char *session_id,
   char **content, long *content_len) {
-    
+
   // Create type 4 Struct
   type4 = malloc(sizeof(MessageType4));
 
@@ -332,12 +349,6 @@ void handle_type4(int sock, MessageType4 *type4, char *session_id,
   assert(strncpy(type4->sessionId, session_id, SID_LENGTH));
   type4->sessionId[SID_LENGTH] = '\0';
 
-  // Print Info
-  printf("Sending Message Type: %d\n", type4->header.messageType);
-  printf("Sending Message Length: %d\n", type4->header.messageLength);
-  printf("Session ID Length: %d\n", type4->sidLength);
-  printf("Session ID: %s\n\n", type4->sessionId);
-
   // Error Checking
   assert((*content) != NULL && "handle_type4 content is NULL!");
 
@@ -348,17 +359,21 @@ void handle_type4(int sock, MessageType4 *type4, char *session_id,
     type4->contentBuffer[MAX_CONTENT_LENGTH] = '\0';
     (*content_len) -= MAX_CONTENT_LENGTH;
     (*content) += MAX_CONTENT_LENGTH;
-    // printf("content length = %d\n", type4->contentLength);
-    // printf("content = %s\n", type4->contentBuffer);
   } else {
     type4->contentLength = (*content_len);
     assert(strncpy(type4->contentBuffer, (*content), (*content_len)) != NULL && "handle_type4 content_len > 4096 strncpy failed!");
     type4->contentBuffer[MAX_CONTENT_LENGTH] = '\0';
     (*content_len) -= (*content_len);
     (*content) += (*content_len);
-    // printf("content length = %d\n", type4->contentLength);
-    // printf("content = %s\n", type4->contentBuffer);
   }
+
+
+  // Print Info
+  printf("Sending Message Type: %d\n", type4->header.messageType);
+  printf("Sending Message Length: %d\n", type4->header.messageLength);
+  printf("Session ID Length: %d\n", type4->sidLength);
+  printf("Session ID: %s\n\n", type4->sessionId);
+
 
   // Send the contents
   assert(nn_send(sock, type4, sizeof(MessageType4), 0) != -1 && "handle_type4 nn_send is NULL!");
@@ -399,6 +414,10 @@ void handle_type5(int sock, MessageType5 *type5, char *session_id) {
   *
   */
 void handle_type6(MessageType6 *type6, char *session_id) {
+
+  // Variables
+  int buf_len;
+
   // Error Checking - Message Type
   if (type6->header.messageType != 6) {
     printf("handle_type6: Message Type is not 6.\n");
@@ -410,6 +429,22 @@ void handle_type6(MessageType6 *type6, char *session_id) {
     printf("handle_type6: Incorrect MessageType6 length!\n");
     printf("type6->messageLength = %d\n", type6->header.messageLength);
     printf("MessageType6 Length = %ld\n", sizeof(MessageType6));
+    exit(-1);
+  }
+
+  // Error Checking - Session ID Null terminated
+  buf_len = strnlen(type6->sessionId, SID_LENGTH + 1);
+  assert(buf_len > 0 && "handle_type6: buffer size is 0");
+  if (buf_len == (SID_LENGTH + 1)) {
+    printf("Session ID buffer is not NULL terminated!\n");
+    exit(-1);
+  }
+
+  // Error Checking - Session ID length
+  if (buf_len != type6->sidLength) {
+    printf("handle_type6: sessionID length is not equal to specified length\n");
+    printf("Specified length = %d\n", type6->sidLength);
+    printf("Session ID length = %d\n", buf_len);
     exit(-1);
   }
 
@@ -440,8 +475,9 @@ int main(const int argc, const char **argv) {
   // receive buffer
   void *buf = NULL;
 
-  // Message Type
+  // Message Info
   int message_type;
+  int message_length;
 
   // User info
   char *uid_name = NULL;
@@ -464,6 +500,7 @@ int main(const int argc, const char **argv) {
   // Prev and Next states
   int prev = -1;
 
+
   // Error Checking
   printf("sock = %d\n", sock);
   assert(sock >= 0 && "nn_socket failed!");
@@ -473,13 +510,21 @@ int main(const int argc, const char **argv) {
 
   do {
     // receive message from socket and display + Error Checking
-    assert(nn_recv(sock, &buf, NN_MSG, 0) >= 0 && "nn_recv failed!");
+    message_length = nn_recv(sock, &buf, NN_MSG, 0);
+
+    // Error Checking
+    assert(message_length >= 0 && "nn_recv failed!");
+
+    // Error Checking - Received message length == Header message Length
+    if (message_length != ((Header *)buf)->messageLength) {
+      printf("Received message length is not the same as header message length!\n");
+      printf("Received message length = %d\n", message_length);
+      printf("Header message length = %d\n", ((Header *)buf)->messageLength);
+      exit(-1);
+    }
 
     // get message type
     message_type = ((Header *)buf)->messageType;
-
-    // Error Checking
-    assert(message_type != NULL && "Received message is NULL!");
 
     // Error Checking - Check expected vs actual message type
     check_received_vs_expected(prev, message_type);
