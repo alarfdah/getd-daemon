@@ -39,22 +39,22 @@ void check_file_size(FILE **ptr, long *size) {
 
 void check_received_vs_expected(int prev, int message_type) {
   // Expecting type 0
-  if ((prev == -1 || prev == 2) && message_type != 0) {
+  if ((prev == -1 || prev == 2) && (message_type != 0 || message_type != 2)) {
     printf("Wrong Message Type: Expected 0, Recieved %d\n", message_type);
     exit(-1);
 
     // Expecting 3
-  } else if (prev == 0 && message_type != 3) {
+  } else if (prev == 0 && (message_type != 3 || message_type != 2)) {
     printf("Wrong Message Type: Expected 3, Recieved %d\n", message_type);
     exit(-1);
 
     // Expecting 6
-  } else if (prev == 3 && message_type != 6) {
+  } else if (prev == 3 && (message_type != 6 || message_type != 2)) {
     printf("Wrong Message Type: Expected 6, Recieved %d\n", message_type);
     exit(-1);
 
     // Expecting 6 again
-  } else if (prev == 6 && message_type != 6) {
+  } else if (prev == 6 && (message_type != 6 || message_type != 2)) {
     printf("Wrong Message Type: Expected 6, Recieved %d\n", message_type);
     exit(-1);
   }
@@ -501,6 +501,9 @@ int main(const int argc, const char **argv) {
   // Prev and Next states
   int prev = -1;
 
+  // Timeout in milliseconds
+  int timeout = 3000;
+
   // Random seed - This is to randomize the session ID
   srand(time(NULL));
 
@@ -510,6 +513,9 @@ int main(const int argc, const char **argv) {
 
   // connect to the socket + Error Checking
   assert(nn_bind(sock, IPC_ADDR) >= 0 && "nn_bind failed!");
+
+  // Error Checking - Setting receive timeout
+  nn_setsockopt (s, NN_SOL_SOCKET, NN_RCVTIMEO, &timeout, sizeof(timeout));
 
   do {
     // receive message from socket and display + Error Checking
