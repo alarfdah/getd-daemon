@@ -39,24 +39,26 @@ void check_file_size(FILE **ptr, long *size) {
 
 void check_received_vs_expected(int prev, int message_type) {
   // Expecting type 0
-  if ((prev == -1 || prev == 2) && (message_type != 0 || message_type != 2)) {
+  if ((prev == -1 || prev == 2) && message_type != 0 && message_type != 2) {
     printf("Wrong Message Type: Expected 0, Recieved %d\n", message_type);
     exit(-1);
 
     // Expecting 3
-  } else if (prev == 0 && (message_type != 3 || message_type != 2)) {
+  } else if (prev == 0 && message_type != 3 && message_type != 2) {
     printf("Wrong Message Type: Expected 3, Recieved %d\n", message_type);
     exit(-1);
 
     // Expecting 6
-  } else if (prev == 3 && (message_type != 6 || message_type != 2)) {
+  } else if (prev == 3 && message_type != 6 && message_type != 2) {
     printf("Wrong Message Type: Expected 6, Recieved %d\n", message_type);
     exit(-1);
 
     // Expecting 6 again
-  } else if (prev == 6 && (message_type != 6 || message_type != 2)) {
+  } else if (prev == 6 && message_type != 6 && message_type != 2) {
     printf("Wrong Message Type: Expected 6, Recieved %d\n", message_type);
     exit(-1);
+  } else {
+    printf("Unexpected message type = %d\n", message_type);
   }
 }
 
@@ -501,8 +503,8 @@ int main(const int argc, const char **argv) {
   // Prev and Next states
   int prev = -1;
 
-  // Timeout in milliseconds
-  int timeout = 3000;
+  // Timeout(ms) Options
+  int timeout = 7000;
 
   // Random seed - This is to randomize the session ID
   srand(time(NULL));
@@ -514,15 +516,18 @@ int main(const int argc, const char **argv) {
   // connect to the socket + Error Checking
   assert(nn_bind(sock, IPC_ADDR) >= 0 && "nn_bind failed!");
 
-  // Error Checking - Setting receive timeout
-  nn_setsockopt (s, NN_SOL_SOCKET, NN_RCVTIMEO, &timeout, sizeof(timeout));
+  // Error Checking - Setting receive timeout on send and receive
+  nn_setsockopt(sock, NN_SOL_SOCKET, NN_RCVTIMEO, &timeout, sizeof(timeout));
+  nn_setsockopt(sock, NN_SOL_SOCKET, NN_SNDTIMEO, &timeout, sizeof(timeout));
+
 
   do {
+
     // receive message from socket and display + Error Checking
     message_length = nn_recv(sock, &buf, NN_MSG, 0);
 
     // Error Checking
-    assert(message_length >= 0 && "nn_recv failed!");
+    assert(message_length >= 0 && "nn_recv failed! Message may be empty or timed out.");
 
     // Error Checking - Received message length == Header message Length
     if (message_length != ((Header *)buf)->messageLength) {
@@ -537,7 +542,6 @@ int main(const int argc, const char **argv) {
 
     // Error Checking - Check expected vs actual message type
     check_received_vs_expected(prev, message_type);
-
 
     switch (message_type) {
       case 0:
