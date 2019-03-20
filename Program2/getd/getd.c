@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <pwd.h>
+#include <time.h>
 #include <nanomsg/nn.h>
 #include <nanomsg/pair.h>
 #include "../util/message.h"
@@ -500,6 +501,8 @@ int main(const int argc, const char **argv) {
   // Prev and Next states
   int prev = -1;
 
+  // Random seed - This is to randomize the session ID
+  srand(time(NULL));
 
   // Error Checking
   printf("sock = %d\n", sock);
@@ -534,7 +537,6 @@ int main(const int argc, const char **argv) {
       case 0:
         prev = 0;
         type0 = (MessageType0 *) buf;
-
         handle_type0(type0, &uid_name, &uid_len);
         session_id = calloc(SID_LENGTH + 1, sizeof(char));
         rand_str(session_id, SID_LENGTH);
@@ -555,13 +557,15 @@ int main(const int argc, const char **argv) {
         prev = 6;
         type6 = (MessageType6 *) buf;
         handle_type6(type6, session_id);
+        // There is still content to send
         if (content_len > 0) {
           handle_type4(sock, type4, session_id, &content, &content_len);
           msg5_sent = 0;
+          // If content is sent but MessageType5 is still not sent
         } else if (!msg5_sent) {
           handle_type5(sock, type5, session_id);
           msg5_sent = 1;
-        // Reciving 6 after sending 5
+          // MessageType5 is already sent and just received a 6
         } else {
           prev = -1;
         }
